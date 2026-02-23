@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # ItemWatcher EC2 deployment script
-# Tested on: Amazon Linux 2023, Ubuntu 22.04
+# Target: Ubuntu 24.04 on EC2 t4g.micro (ARM64 / Graviton)
 # Usage: sudo bash setup.sh [REPO_URL]
 #
 set -euo pipefail
@@ -27,32 +27,12 @@ echo ""
 # ─── Install system dependencies ────────────────────────────────
 echo ">>> Installing system packages..."
 
-if [[ "$OS_ID" == "amzn" ]]; then
-    # Amazon Linux 2023
-    dnf install -y python3.11 python3.11-pip python3.11-devel git
-    # Playwright browser deps
-    dnf install -y \
-        nss atk at-spi2-atk cups-libs libdrm libXcomposite libXdamage \
-        libXrandr mesa-libgbm pango alsa-lib libxkbcommon
-    PYTHON="python3.11"
-
-elif [[ "$OS_ID" == "ubuntu" ]]; then
-    # Ubuntu 22.04
-    apt-get update
-    apt-get install -y software-properties-common
-    add-apt-repository -y ppa:deadsnakes/ppa
+if [[ "$OS_ID" == "ubuntu" ]]; then
     apt-get update
     apt-get install -y python3.11 python3.11-venv python3.11-dev python3-pip git
-    # Playwright browser deps
-    apt-get install -y \
-        libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 \
-        libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
-        libcairo2 libasound2 libxkbcommon0 libxshmfence1 libx11-xcb1 \
-        fonts-liberation
     PYTHON="python3.11"
-
 else
-    echo "Unsupported OS: $OS_ID. Install Python 3.11 manually, then re-run."
+    echo "Unsupported OS: $OS_ID. This script targets Ubuntu 24.04."
     exit 1
 fi
 
