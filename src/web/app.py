@@ -13,7 +13,7 @@ from typing import Optional
 from ..config import Config
 from ..storage import Database
 from ..watcher import scrape_product, check_product, get_scraper_for_url
-from ..alerts import EmailNotifier
+from ..alerts import EmailNotifier, TelegramNotifier
 
 
 # Initialize FastAPI
@@ -268,8 +268,12 @@ async def check_product_now(product_id: int):
         if config.email:
             notifier = EmailNotifier(config.email)
 
+        telegram = None
+        if config.telegram:
+            telegram = TelegramNotifier(config.telegram)
+
         try:
-            info = await check_product(db, product, notifier)
+            info = await check_product(db, product, notifier, telegram)
             return JSONResponse({
                 "status": "success",
                 "price": info.price if info else None,
@@ -299,9 +303,13 @@ async def check_all_products():
     if config.email:
         notifier = EmailNotifier(config.email)
 
+    telegram = None
+    if config.telegram:
+        telegram = TelegramNotifier(config.telegram)
+
     async with Database(config.db_path) as db:
         try:
-            await check_all_products(db, notifier, delay_between=3.0)
+            await check_all_products(db, notifier, telegram, delay_between=3.0)
             return JSONResponse({"status": "success", "message": "All products checked successfully"})
         except Exception as e:
             error_msg = str(e)

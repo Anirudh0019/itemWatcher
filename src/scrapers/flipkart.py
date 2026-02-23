@@ -33,7 +33,7 @@ class FlipkartScraper(BaseScraper):
         page = await self._new_page()
 
         try:
-            # Try loading with retry logic like Amazon
+            # Try loading with retry logic
             try:
                 await page.goto(url, wait_until='domcontentloaded', timeout=30000)
             except Exception as e:
@@ -50,88 +50,129 @@ class FlipkartScraper(BaseScraper):
             except Exception:
                 pass  # No popup, continue
 
-            # Wait for page content - try multiple indicators
+            # Wait for page content
             try:
-                await page.wait_for_selector('.B_NuCI, ._35KyD6, h1', timeout=5000)
+                await page.wait_for_selector('h1, .B_NuCI, ._35KyD6', timeout=5000)
             except Exception:
                 pass  # Continue anyway
 
             # Extra time for price to render
-            await page.wait_for_timeout(3000)
+            await page.wait_for_timeout(4000)
 
-            html = await page.content()
-            soup = BeautifulSoup(html, 'html.parser')
+            # --- Extract via Playwright JS for reliability ---
+            # Flipkart now uses React Native Web with obfuscated classes that
+            # change frequently. Instead of brittle CSS selectors, we use
+            # JavaScript to read the page content structurally.
 
-            # Title - Flipkart uses various class names
-            title = 'Unknown Product'
-            title_selectors = ['.B_NuCI', '._35KyD6', 'h1 span']
-            for selector in title_selectors:
-                elem = soup.select_one(selector)
-                if elem:
-                    title = elem.get_text(strip=True)
-                    break
+            # Title: grab from <title> tag or first h1
+            title = await page.evaluate("""() => {
+                // Try h1 first (most reliable on product pages)
+                const h1 = document.querySelector('h1');
+                if (h1 && h1.textContent.trim()) return h1.textContent.trim();
+                // Fallback to legacy selectors
+                const legacy = document.querySelector('.B_NuCI, ._35KyD6');
+                if (legacy) return legacy.textContent.trim();
+                // Fallback to page title minus " - Flipkart"
+                const t = document.title.replace(/\\s*[-|].*Flipkart.*$/i, '').trim();
+                return t || 'Unknown Product';
+            }""")
 
-            # Current price - try multiple selectors
-            price = None
-            price_selectors = [
-                '._30jeq3',  # Common price class
-                '.Nx9bqj',   # Alternative price class
-                '._1_WHN1',  # Another variant
-                'div._16Jk6d',  # Price container
-            ]
+            # Price: use JS to find the primary selling price.
+            # Strategy: the main price is the first standalone ₹XX,XXX element
+            # in the product info area, NOT inside "Buy at", "with Bank offer",
+            # EMI, or "Lowest price" text.
+            price_data = await page.evaluate("""() => {
+                const results = { price: null, mrp: null };
 
-            for selector in price_selectors:
-                elem = soup.select_one(selector)
-                if elem:
-                    price = self._parse_price(elem.get_text())
-                    if price:
-                        break
+                // Find all text nodes / elements containing ₹
+                const allElems = document.querySelectorAll('div, span');
+                const pricePattern = /^₹[\\d,]+$/;
+                const mrpCandidates = [];
+                const priceCandidates = [];
 
-            # If still no price, try finding any element with ₹ symbol
+                for (const el of allElems) {
+                    // Only check direct text content (not nested children text)
+                    const directText = Array.from(el.childNodes)
+                        .filter(n => n.nodeType === 3)
+                        .map(n => n.textContent.trim())
+                        .join('');
+
+                    if (!pricePattern.test(directText)) continue;
+
+                    // Skip elements inside "similar products" / recommendation sections
+                    const ancestor = el.closest('[data-testid], [class*="similar"], [class*="recommend"]');
+
+                    // Check if this looks like a struck-through / MRP price
+                    const style = window.getComputedStyle(el);
+                    const isStrikethrough = style.textDecorationLine.includes('line-through');
+
+                    // Check parent context for offer/EMI text
+                    const parentText = el.parentElement?.textContent || '';
+                    const isOfferPrice = /bank offer|exchange|emi|lowest price|buy at/i.test(parentText);
+
+                    const price = parseInt(directText.replace(/[₹,]/g, ''), 10);
+                    if (isNaN(price)) continue;
+
+                    if (isStrikethrough) {
+                        mrpCandidates.push({ price, el_tag: el.tagName, classes: el.className });
+                    } else if (!isOfferPrice) {
+                        priceCandidates.push({ price, el_tag: el.tagName, classes: el.className });
+                    }
+                }
+
+                // The selling price is typically the first non-strikethrough,
+                // non-offer ₹XX,XXX on the page
+                if (priceCandidates.length > 0) {
+                    results.price = priceCandidates[0].price;
+                }
+
+                // MRP is the first strikethrough price
+                if (mrpCandidates.length > 0) {
+                    results.mrp = mrpCandidates[0].price;
+                }
+
+                return results;
+            }""")
+
+            price = price_data.get('price') if price_data else None
+            original_price = price_data.get('mrp') if price_data else None
+
+            # Fallback: parse HTML with BeautifulSoup if JS extraction failed
             if price is None:
-                price_text = soup.find(string=re.compile(r'₹[\d,]+'))
-                if price_text:
-                    price = self._parse_price(price_text)
+                html = await page.content()
+                soup = BeautifulSoup(html, 'html.parser')
+                price, original_price = self._fallback_price_extract(soup)
 
             if price is None:
                 raise ValueError(f"Could not extract price from {url}. Page may have changed or requires login.")
 
-            # Original price (MRP)
-            original_price = None
-            mrp_selectors = ['._3I9_wc', '.yRaY8j', '._2p6lqe']
-            for selector in mrp_selectors:
-                elem = soup.select_one(selector)
-                if elem:
-                    original_price = self._parse_price(elem.get_text())
-                    if original_price:
-                        break
+            # Ensure MRP > price, otherwise discard it
+            if original_price and original_price <= price:
+                original_price = None
 
             # Stock status
-            in_stock = True
-            out_of_stock = soup.select_one('._16FRp0')
-            if out_of_stock and 'out of stock' in out_of_stock.get_text(strip=True).lower():
-                in_stock = False
-
-            # Also check for "Currently unavailable"
-            unavailable = soup.find(string=re.compile(r'currently unavailable', re.I))
-            if unavailable:
-                in_stock = False
+            is_out = await page.evaluate("""() => {
+                const text = document.body.innerText || '';
+                return /currently unavailable|out of stock|coming soon/i.test(text);
+            }""")
+            in_stock = not is_out
 
             # Seller
-            seller = None
-            seller_elem = soup.select_one('#sellerName span span, ._1RLviY')
-            if seller_elem:
-                seller = seller_elem.get_text(strip=True)
+            seller = await page.evaluate("""() => {
+                const el = document.querySelector('#sellerName span span, ._1RLviY');
+                return el ? el.textContent.trim() : null;
+            }""")
 
             # Image
-            image_url = None
-            img_selectors = ['._396cs4', '._2r_T1I img', '.CXW8mj img']
-            for selector in img_selectors:
-                elem = soup.select_one(selector)
-                if elem:
-                    image_url = elem.get('src')
-                    if image_url:
-                        break
+            image_url = await page.evaluate("""() => {
+                // Product images are usually the first large img
+                const imgs = document.querySelectorAll('img[src*="rukminim"]');
+                for (const img of imgs) {
+                    const src = img.src || '';
+                    if (src.includes('/image/') && !src.includes('icon')) return src;
+                }
+                return null;
+            }""")
 
             return ProductInfo(
                 url=url,
@@ -148,3 +189,38 @@ class FlipkartScraper(BaseScraper):
 
         finally:
             await page.close()
+
+    def _fallback_price_extract(self, soup) -> tuple:
+        """Fallback: extract price from HTML using BeautifulSoup."""
+        price = None
+        original_price = None
+
+        # Try legacy CSS selectors first
+        for selector in ['._30jeq3', '.Nx9bqj', '._1_WHN1', 'div._16Jk6d']:
+            elem = soup.select_one(selector)
+            if elem:
+                price = self._parse_price(elem.get_text())
+                if price:
+                    break
+
+        # If still no price, find first bare ₹XX,XXX text node
+        if price is None:
+            for elem in soup.find_all(string=re.compile(r'^₹[\d,]+$')):
+                # Skip if parent text contains offer keywords
+                parent_text = elem.parent.get_text() if elem.parent else ''
+                if re.search(r'bank offer|exchange|emi|lowest price|buy at', parent_text, re.I):
+                    continue
+                candidate = self._parse_price(elem)
+                if candidate:
+                    price = candidate
+                    break
+
+        # MRP from legacy selectors
+        for selector in ['._3I9_wc', '.yRaY8j', '._2p6lqe']:
+            elem = soup.select_one(selector)
+            if elem:
+                original_price = self._parse_price(elem.get_text())
+                if original_price:
+                    break
+
+        return price, original_price
