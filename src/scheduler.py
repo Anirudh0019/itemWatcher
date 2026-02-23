@@ -11,20 +11,37 @@ from apscheduler.triggers.interval import IntervalTrigger
 
 from .config import Config
 from .storage import Database
-from .alerts import EmailNotifier
+from .alerts import EmailNotifier, TelegramNotifier
 from .watcher import check_all_products
+
+# Track last summary date to send Telegram summary only once per day
+_last_summary_date = None
 
 
 async def run_check(config: Config):
     """Run a price check for all products."""
+    global _last_summary_date
     print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Starting price check...")
 
     notifier = None
     if config.email:
         notifier = EmailNotifier(config.email)
 
+    telegram = None
+    if config.telegram:
+        telegram = TelegramNotifier(config.telegram)
+
+    # Send Telegram summary only once per day
+    today = datetime.now().date()
+    send_summary = _last_summary_date != today
+    if send_summary:
+        _last_summary_date = today
+
     async with Database(config.db_path) as db:
-        await check_all_products(db, notifier)
+        await check_all_products(
+            db, notifier, telegram,
+            send_telegram_summary=send_summary,
+        )
 
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Price check complete.")
 

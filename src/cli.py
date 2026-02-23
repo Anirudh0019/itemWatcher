@@ -10,7 +10,7 @@ from datetime import datetime
 
 from .config import Config
 from .storage import Database
-from .alerts import EmailNotifier
+from .alerts import EmailNotifier, TelegramNotifier
 from .watcher import scrape_product, check_product, check_all_products, get_scraper_for_url
 
 
@@ -239,10 +239,14 @@ def check(ctx, product_id: int):
     """Check prices now (runs scraper)."""
     config = ctx.obj['config']
 
-    # Set up notifier if configured
+    # Set up notifiers if configured
     notifier = None
     if config.email:
         notifier = EmailNotifier(config.email)
+
+    telegram = None
+    if config.telegram:
+        telegram = TelegramNotifier(config.telegram)
 
     async def _check():
         async with Database(config.db_path) as db:
@@ -253,14 +257,14 @@ def check(ctx, product_id: int):
                     return
 
                 console.print(f"[yellow]Checking: {product.title[:50]}...[/yellow]")
-                info = await check_product(db, product, notifier)
+                info = await check_product(db, product, notifier, telegram)
 
                 if info:
                     console.print(f"[green]✓ ₹{info.price:,.0f}[/green]" +
                                   (f" [dim](was ₹{info.original_price:,.0f})[/dim]" if info.original_price else ""))
             else:
                 console.print("[yellow]Checking all products...[/yellow]\n")
-                await check_all_products(db, notifier)
+                await check_all_products(db, notifier, telegram)
                 console.print("\n[green]✓ Done![/green]")
 
     run_async(_check())

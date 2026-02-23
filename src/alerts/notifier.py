@@ -1,4 +1,5 @@
 import aiosmtplib
+import httpx
 from dataclasses import dataclass
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -15,6 +16,86 @@ class AlertConfig:
     from_email: str
     to_email: str
     use_tls: bool = True
+
+
+@dataclass
+class TelegramConfig:
+    """Telegram Bot configuration for alerts."""
+    bot_token: str
+    chat_id: str
+
+
+class TelegramNotifier:
+    """Send Telegram notifications for price alerts."""
+
+    TELEGRAM_API = "https://api.telegram.org"
+
+    def __init__(self, config: TelegramConfig):
+        self.config = config
+
+    async def send_price_alert(
+        self,
+        product_title: str,
+        product_url: str,
+        current_price: float,
+        target_price: float,
+    ):
+        """Send a Telegram alert when price is at or below target."""
+        diff = target_price - current_price
+        text = (
+            f"\U0001f6a8 PRICE ALERT: {product_title} is "
+            f"\u20b9{current_price:,.2f} "
+            f"(\u20b9{diff:,.2f} below your target of \u20b9{target_price:,.2f})! "
+            f"Buy now: {product_url}"
+        )
+        await self._send_message(text)
+
+    async def send_daily_summary(
+        self,
+        total_checked: int,
+        closest_product: Optional[str] = None,
+        closest_price: Optional[float] = None,
+        closest_gap: Optional[float] = None,
+    ):
+        """Send a daily summary when all products are above target."""
+        if closest_product and closest_price is not None and closest_gap is not None:
+            text = (
+                f"\U0001f4ca ItemWatcher: {total_checked} products checked, "
+                f"all above target. Lowest gap: {closest_product} at "
+                f"\u20b9{closest_price:,.2f} "
+                f"(\u20b9{closest_gap:,.2f} above target)"
+            )
+        else:
+            text = (
+                f"\U0001f4ca ItemWatcher: {total_checked} products checked, "
+                f"all above target."
+            )
+        await self._send_message(text)
+
+    async def send_back_in_stock_alert(
+        self,
+        product_title: str,
+        product_url: str,
+        price: float,
+    ):
+        """Send alert when product is back in stock."""
+        text = (
+            f"\U0001f389 Back in Stock: {product_title} "
+            f"at \u20b9{price:,.2f}! "
+            f"Buy now: {product_url}"
+        )
+        await self._send_message(text)
+
+    async def _send_message(self, text: str):
+        """Send a message via Telegram Bot API."""
+        url = f"{self.TELEGRAM_API}/bot{self.config.bot_token}/sendMessage"
+        payload = {
+            "chat_id": self.config.chat_id,
+            "text": text,
+        }
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(url, json=payload, timeout=30)
+            resp.raise_for_status()
 
 
 class EmailNotifier:

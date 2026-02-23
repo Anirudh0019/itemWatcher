@@ -5,7 +5,7 @@ from typing import Optional
 
 from dotenv import load_dotenv
 
-from .alerts.notifier import AlertConfig
+from .alerts.notifier import AlertConfig, TelegramConfig
 
 
 @dataclass
@@ -14,6 +14,7 @@ class Config:
     db_path: str
     check_interval_hours: int
     email: Optional[AlertConfig]
+    telegram: Optional[TelegramConfig]
 
     @classmethod
     def load(cls, env_file: Optional[str] = None) -> 'Config':
@@ -49,8 +50,19 @@ class Config:
                 use_tls=os.getenv('SMTP_USE_TLS', 'true').lower() == 'true',
             )
 
+        # Telegram config (optional)
+        telegram = None
+        telegram_bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+        telegram_chat_id = os.getenv('TELEGRAM_CHAT_ID')
+        if telegram_bot_token and telegram_chat_id:
+            telegram = TelegramConfig(
+                bot_token=telegram_bot_token,
+                chat_id=telegram_chat_id,
+            )
+
         return cls(
             db_path=db_path,
             check_interval_hours=check_interval,
             email=email,
+            telegram=telegram,
         )

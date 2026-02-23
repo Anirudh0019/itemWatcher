@@ -1,3 +1,3 @@
-from .notifier import EmailNotifier, AlertConfig
+from .notifier import EmailNotifier, AlertConfig, TelegramNotifier, TelegramConfig
 
-__all__ = ["EmailNotifier", "AlertConfig"]
+__all__ = ["EmailNotifier", "AlertConfig", "TelegramNotifier", "TelegramConfig"]
