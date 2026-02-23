@@ -1,0 +1,18 @@
+[Unit]
+Description=ItemWatcher Price Check Scheduler
+After=network.target
+
+[Service]
+Type=simple
+User=itemwatcher
+Group=itemwatcher
+WorkingDirectory=/opt/itemwatcher
+EnvironmentFile=/opt/itemwatcher/.env
+ExecStart=/opt/itemwatcher/.venv/bin/python -m src.scheduler
+Restart=on-failure
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

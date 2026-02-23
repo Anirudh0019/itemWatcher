@@ -1,0 +1,18 @@
+[Unit]
+Description=ItemWatcher Web UI
+After=network.target
+
+[Service]
+Type=simple
+User=itemwatcher
+Group=itemwatcher
+WorkingDirectory=/opt/itemwatcher
+EnvironmentFile=/opt/itemwatcher/.env
+ExecStart=/opt/itemwatcher/.venv/bin/itemwatcher web
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block content %}
+{% if error %}
+<div class="alert alert-error">
+    <strong>Error:</strong> {{ error }}
+</div>
+{% endif %}
+
+<div class="card">
+    <h2 style="margin-bottom: 20px;">Add New Product</h2>
+    <form method="POST" action="/add" id="addForm">
+        <div class="form-group">
+            <label for="url">Product URL (Amazon.in or Flipkart)</label>
+            <input type="url" id="url" name="url" placeholder="https://www.amazon.in/dp/B0XXXXXXXX" required>
+        </div>
+        <div class="form-group">
+            <label for="target_price">Target Price (optional)</label>
+            <input type="number" id="target_price" name="target_price" placeholder="15000" step="0.01">
+        </div>
+        <button type="submit" class="btn">Add Product</button>
+        <button type="button" class="btn btn-success" onclick="checkAll()" style="margin-left: 10px;">Check All Prices Now</button>
+    </form>
+</div>
+
+<div class="card">
+    <h2 style="margin-bottom: 20px;">Tracked Products ({{ products|length }})</h2>
+
+    {% if products %}
+        {% for product in products %}
+        <div class="card" style="border-left: 4px solid #667eea;">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+                <div style="flex: 1;">
+                    <h3 style="margin-bottom: 10px;">
+                        <a href="/product/{{ product.id }}" style="color: #333; text-decoration: none;">
+                            {{ product.title }}
+                        </a>
+                    </h3>
+
+                    <div style="margin-bottom: 10px;">
+                        {% if product.current_price %}
+                            <span class="price">₹{{ "{:,.0f}".format(product.current_price) }}</span>
+                            {% if product.lowest_price and product.current_price == product.lowest_price %}
+                                <span class="badge badge-success" style="margin-left: 10px;">Lowest Price!</span>
+                            {% endif %}
+                        {% else %}
+                            <span style="color: #999;">No price data yet</span>
+                        {% endif %}
+                    </div>
+
+                    <div style="font-size: 0.9rem; color: #666;">
+                        {% if product.in_stock %}
+                            <span class="badge badge-success">✓ In Stock</span>
+                        {% else %}
+                            <span class="badge badge-danger">✗ Out of Stock</span>
+                        {% endif %}
+
+                        <span class="badge badge-info" style="margin-left: 5px;">{{ product.source }}</span>
+
+                        {% if product.target_price %}
+                            <span style="margin-left: 10px;">
+                                Target: ₹{{ "{:,.0f}".format(product.target_price) }}
+                            </span>
+                        {% endif %}
+
+                        {% if product.lowest_price %}
+                            <span style="margin-left: 10px;">
+                                Lowest: ₹{{ "{:,.0f}".format(product.lowest_price) }}
+                            </span>
+                        {% endif %}
+
+                        {% if product.last_checked %}
+                            <span style="margin-left: 10px;">
+                                Last checked: {{ format_time_ago(product.last_checked) }}
+                            </span>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 10px;">
+                    <a href="/product/{{ product.id }}" class="btn" style="text-decoration: none;">View</a>
+                    <button onclick="checkProduct({{ product.id }})" class="btn btn-success">Check Now</button>
+                    <form method="POST" action="/remove/{{ product.id }}" style="display: inline;">
+                        <button type="submit" class="btn btn-danger" onclick="return confirm('Remove this product?')">Remove</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <p style="color: #666; text-align: center; padding: 40px;">
+            No products tracked yet. Add one above to get started!
+        </p>
+    {% endif %}
+</div>
+
+<script>
+async function checkProduct(id) {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Checking...';
+
+    try {
+        const response = await fetch(`/check/${id}`, { method: 'POST' });
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            location.reload();
+        } else {
+            alert('Error: ' + (data.message || 'Failed to check price'));
+            btn.disabled = false;
+            btn.textContent = 'Check Now';
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+        btn.disabled = false;
+        btn.textContent = 'Check Now';
+    }
+}
+
+async function checkAll() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = 'Checking all products...';
+
+    try {
+        const response = await fetch('/check-all', { method: 'POST' });
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            alert('Price check complete!');
+            location.reload();
+        } else {
+            alert('Error: ' + (data.message || 'Failed to check prices'));
+            btn.disabled = false;
+            btn.textContent = 'Check All Prices Now';
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+        btn.disabled = false;
+        btn.textContent = 'Check All Prices Now';
+    }
+}
+</script>
+{% endblock %}

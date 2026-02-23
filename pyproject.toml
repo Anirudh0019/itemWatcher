@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "itemwatcher"
+version = "0.2.0"
+description = "Track prices on Amazon & Flipkart"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "playwright>=1.40.0",
+    "beautifulsoup4>=4.12.0",
+    "aiosqlite>=0.19.0",
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "python-dotenv>=1.0.0",
+    "apscheduler>=3.10.0",
+    "aiosmtplib>=3.0.0",
+    "fastapi>=0.104.0",
+    "uvicorn>=0.24.0",
+    "jinja2>=3.1.0",
+    "python-multipart>=0.0.6",
+]
+
+[project.scripts]
+itemwatcher = "src.cli:main"
+iw = "src.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
