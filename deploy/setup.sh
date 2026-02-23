@@ -29,8 +29,8 @@ echo ">>> Installing system packages..."
 
 if [[ "$OS_ID" == "ubuntu" ]]; then
     apt-get update
-    apt-get install -y python3.11 python3.11-venv python3.11-dev python3-pip git
-    PYTHON="python3.11"
+    apt-get install -y python3 python3-venv python3-dev python3-pip git
+    PYTHON="python3"
 else
     echo "Unsupported OS: $OS_ID. This script targets Ubuntu 24.04."
     exit 1
