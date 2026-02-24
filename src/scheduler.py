@@ -46,7 +46,7 @@ async def run_check(config: Config):
     print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Price check complete.")
 
 
-def start_scheduler(config: Config = None):
+async def start_scheduler(config: Config = None):
     """Start the background scheduler."""
     if config is None:
         config = Config.load()
@@ -62,11 +62,14 @@ def start_scheduler(config: Config = None):
         next_run_time=datetime.now(),  # Run immediately on start
     )
 
+    loop = asyncio.get_running_loop()
+
     # Handle shutdown gracefully
+    stop_event = asyncio.Event()
+
     def shutdown(signum, frame):
         print("\nShutting down scheduler...")
-        scheduler.shutdown()
-        sys.exit(0)
+        loop.call_soon_threadsafe(stop_event.set)
 
     signal.signal(signal.SIGINT, shutdown)
     signal.signal(signal.SIGTERM, shutdown)
@@ -77,12 +80,11 @@ def start_scheduler(config: Config = None):
 
     scheduler.start()
 
-    # Keep the main thread alive
     try:
-        asyncio.get_event_loop().run_forever()
-    except (KeyboardInterrupt, SystemExit):
-        pass
+        await stop_event.wait()
+    finally:
+        scheduler.shutdown()
 
 
 if __name__ == '__main__':
-    start_scheduler()
+    asyncio.run(start_scheduler())

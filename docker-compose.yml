@@ -1,0 +1,17 @@
+services:
+  itemwatcher:
+    build: .
+    container_name: itemwatcher
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./.env:/app/.env:ro
+      - itemwatcher-data:/data
+    env_file:
+      - .env
+    environment:
+      - ITEMWATCHER_DB_PATH=/data/data.db
+    restart: unless-stopped
+
+volumes:
+  itemwatcher-data:
