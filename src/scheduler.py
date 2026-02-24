@@ -55,7 +55,8 @@ async def start_scheduler(config: Config = None):
 
     # Schedule periodic checks
     scheduler.add_job(
-        lambda: asyncio.create_task(run_check(config)),
+        run_check,
+        args=[config],
         trigger=IntervalTrigger(hours=config.check_interval_hours),
         id='price_check',
         name='Check all product prices',
